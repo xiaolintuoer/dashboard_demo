@@ -1,9 +1,5 @@
-# 加载需要的库或包
-import pickle
-import copy
-import pathlib
-import urllib.request
 import os
+import pandas as pd
 import dash
 import math
 import datetime as dt
@@ -16,16 +12,17 @@ from dash import dcc, html
 from controls import COUNTIES, WELL_STATUSES, WELL_TYPES, WELL_COLORS
 
 
-# 获取相关数据文件夹
-#PATH = pathlib.Path(__file__).parent
-#DATA_PATH = PATH.joinpath('data').resolve()
+# 加载数据集
+path = os.getcwd()
+df = pd.read_csv(os.path.join(path, os.path.join('data', 'wellspublic.csv')))
+# 预处理数据集
 
 
-external_stylesheets = ['/assets/styles.css']
 
+# external_stylesheets = ['/assets/spc-custom-styles.css']
 app = dash.Dash(
     __name__,
-    external_stylesheets=external_stylesheets,
+    # external_stylesheets=external_stylesheets,
     meta_tags=[{'name': 'viewport', 'content': 'width=device-width'}],
 )
 app.title = 'Oil & Gas Wells'
@@ -48,22 +45,7 @@ well_type_options = [
     for well_type in WELL_TYPES
 ]
 
-'''
-# 下载pickle文件
-Path = os.getcwd()
-# points = pickle.load(open(Path+'\my_demo\data\points.pkl'), 'rb')
 
-# 加载数据
-df = pd.read_csv(Path + '\my_demo\data\wellspublic.csv')
-df['Date_Well_Completed'] = pd.to_datetime(df['Date_Well_Completed'])
-df = df[df['Date_Well_Completed'] > dt.datetime(1960,1,1)]
-
-trim = df[['API_WellNo', 'Well_Type', 'Well_Name']]
-trim.index = trim['API_WellNo']
-# dataset = trim.to_dict(orient='index')
-'''
-
-# 创建全局图标模板
 mapbox_access_token = "pk.eyJ1IjoicGxvdGx5bWFwYm94IiwiYSI6ImNrOWJqb2F4djBnMjEzbG50amg0dnJieG4ifQ.Zme1-Uzoi75IaFbieBDl3A"
 
 layout = dict(
@@ -84,7 +66,6 @@ layout = dict(
 )
 
 
-# 创建APP布局
 app.layout = html.Div(
     [
         dcc.Store(id='aggregate_data'),
@@ -108,16 +89,12 @@ app.layout = html.Div(
                 ),
                 html.Div(
                     [
-                        html.Div(
-                            [
-                                html.H3(
-                                    'New York Oil and Gas',
-                                    style={'margin-bottom': '0px'}
-                                ),
-                                html.H5(
-                                    'Production Overview', style={'margin-top': '0px'}
-                                )
-                            ]
+                        html.H3(
+                            'New York Oil and Gas',
+                            style={'margin-bottom': '0px'}
+                        ),
+                        html.H5(
+                            'Production Overview', style={'margin-top': '0px'}
                         )
                     ],
                     className='one-half column',
@@ -263,11 +240,176 @@ app.layout = html.Div(
             className='row flex-display'
         )
     ],
-    id='mainContainer',
+    id='mainContanier',
     style={'display': 'flex', 'flex-direction': 'column'}
 )
 
 
-# Main
+# Helper functions
+def human_format(num):
+    if num == 0:
+        return '0'
+
+    magnitude = int(math.log(num, 1000))
+    mantissa = str(int(num / (1000 * magnitude)))
+    return mantissa + ['', 'K', 'M', 'G', 'T', 'P'][magnitude]
+
+
+def filter_dataframe(df, well_statuses, well_types, year_slider):
+    dff = df[
+        df['Well_Status'].isin(well_statuses) &
+        df['Well_Type'].isin(well_types) &
+        (df['Date_Well_Completed'] > dt.datetime(year_slider[0], 1, 1)) &
+        (df['Date_Well_Completed'] < dt.datetime(year_slider[1], 1, 1))
+    ]
+    return dff
+
+
+def produce_individual(api_well_num):
+    try:
+        points[api_well_num]
+    except:
+        return None, None, None, None
+
+    index = list(range(min(points[api_well_num].keys()), max(points[api_well_num].keys()) + 1))
+    gas = []
+    oil = []
+    water = []
+
+    for year in index:
+        try:
+            gas.append(points[api_well_num][year]['Gas Produced, MCF'])
+        except:
+            gas.append(0)
+        try:
+            oil.append(points[api_well_num][year]['Oil Produced, bbl'])
+        except:
+            oil.append(0)
+        try:
+            water.append(points[api_well_num][year]['Water Produced, bbl'])
+        except:
+            water.append(0)
+
+    return index, gas, oil, water
+
+
+def produce_aggregate(selected, year_slider):
+    index = list(range(max(year_slider[0], 1985), 2016))
+    gas = []
+    oil = []
+    water = []
+
+    for year in index:
+        count_gas = 0
+        count_oil = 0
+        count_water = 0
+        for api_well_num in selected:
+            try:
+                count_gas += points[api_well_num][year]['Gas Produced, MCF']
+            except:
+                pass
+            try:
+                count_oil += points[api_well_num][year]['Oil Produced, bbl']
+            except:
+                pass
+            try:
+                count_water += points[api_well_num][year]['Water Produced, bbl']
+            except:
+                pass
+        gas.append(count_gas)
+        oil.append(count_oil)
+        water.append(count_water)
+
+    return index, gas, oil, water
+
+
+# Create callbacks
+app.clientside_callback(
+    ClientsideFunction(namespace='clientside', function_name='resize'),
+    Output('output-clientside', 'children'),
+    [Input('count_graph', 'figure')]
+)
+
+
+@app.callback(
+    Output('aggregate_data', 'data')
+    [
+        Input('well_statuses', 'value'),
+        Input('well_types', 'value'),
+        Input('year_slider', 'value')
+    ]
+)
+def update_production_text(well_statuses, well_types, year_slider):
+    dff = filter_dataframe(df, well_statuses, well_types, year_slider)
+    selected = dff['API_WellNo'].values
+    index, gas, oil, water = produce_aggregate(selected, year_slider)
+    
+    return [human_format(sum(gas)), human_format(sum(oil)), human_format(sum(water))]
+
+
+# Radio -> multi
+@app.callback(
+    Output('well_statuses', 'value'),
+    [Input('well_status_selector', 'value')]
+)
+def display_status(selector):
+    if selector == 'all':
+        return list(WELL_STATUSES.keys())
+    elif selector == 'active':
+        return ['AC']
+    return []
+
+
+# Radio -> multi
+@app.callback(
+    Output('well_types', 'value'),
+    [Input('well_type_selector', 'value')]
+)
+def display_type(selector):
+    if selector == 'all':
+        return list(WELL_TYPES.keys())
+    elif selector == 'productive':
+        return ['GD', 'GE', 'GW', 'IG', 'IW', 'OD', 'OE', 'OW']
+    return []
+
+
+# Slider -> count graph
+@app.callback(
+    Output('year_slider', 'value'),
+    [Input('count_graph', 'selectData')]
+)
+def update_year_slider(count_graph_selected):
+    if count_graph_selected is None:
+        return [1990, 2010]
+
+    nums = [int(point['pointNumber']) for point in count_graph_selected['points']]
+    return [min(nums) + 1960, max(nums) + 1961]
+
+
+# Selectors -> well text
+@app.callback(
+    Output('well_text', 'children')
+    [
+        Input('well_statuses', 'value'),
+        Input('well_type', 'value'),
+        Input('year_slider', 'value')
+    ]
+)
+def update_well_text(well_statuses, well_types, year_slider):
+    dff = filter_dataframe(df, well_statuses, well_types, year_slider)
+    return dff.shape[0]
+
+
+@app.callback(
+    [
+        Output('gasText', 'children')
+        Output('oilText', 'children')
+        Output('waterText', 'children')
+    ],
+    [Input('aggregate_data', 'data')]
+)
+
+
+# main
 if __name__ == '__main__':
     app.run_server(debug=True)
