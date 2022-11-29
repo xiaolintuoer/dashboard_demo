@@ -258,11 +258,11 @@ app.layout = html.Div(
         html.Div(
             [
                 html.Div(
-                    [dcc.Graph(id='main_graph')],
+                    [dcc.Graph(id='pie_graph')],
                     className='pretty_container seven columns'
                 ),
                 html.Div(
-                    [dcc.Graph(id='individual_graph')],
+                    [dcc.Graph(id='aggregate_graph')],
                     className='pretty_container five columns'
                 )
             ],
