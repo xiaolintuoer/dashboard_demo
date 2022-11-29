@@ -15,7 +15,7 @@ app = dash.Dash(
 )
 app.title = 'Manufacturing SPC Dashboard'
 server = app.server
-app.configd['suppress_callback_exceptions'] = True #
+app.config['suppress_callback_exceptions'] = True #
 
 # 获取数据集文件的路径并读取
 APP_PATH = str(pathlib.Path(__file__).parent.resolve()) # 1返回当前文件路径 2的上级目录 3的绝对路径

@@ -41,7 +41,7 @@ well_type_options = [
 ]
 
 
-# Download pickle file
+# Download pickle file（从网上下载并保存到本地）
 urllib.request.urlretrieve(
     "https://raw.githubusercontent.com/plotly/datasets/master/dash-sample-apps/dash-oil-and-gas/data/points.pkl",
     DATA_PATH.joinpath("points.pkl"),
